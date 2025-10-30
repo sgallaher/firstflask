@@ -21,10 +21,8 @@ class User(Base):
 
     # ensure this is inside the class User declaration
     def set_password(self, password: str):
-        password = password[:71]
         self.password_hash = bcrypt.hash(password)
 
     def check_password(self, password:str) -> bool:
-        password = password[:71]
         return bcrypt.verify(password, self.password_hash)
 
