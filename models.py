@@ -1,17 +1,17 @@
 from sqlalchemy import Column, Integer, String, Enum
 from sqlalchemy.ext.declarative import declarative_base
 import enum
-from passlib.hash import bcrypt_sha256  # safer for long passwords
+from passlib.hash import argon2  # modern, safe, no 72-byte limit
 
 Base = declarative_base()
 
-# declare the AccessLevel Object
+# Access level enum
 class AccessLevel(enum.Enum):
     ADMIN = "admin"
     GENERAL = "general"
     DORMANT = "dormant"
 
-# declare the User Object
+# User model
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
@@ -19,10 +19,10 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     access_level = Column(Enum(AccessLevel), default=AccessLevel.GENERAL)
 
-    # ensure this is inside the class User declaration
+    # Set password using Argon2
     def set_password(self, password: str):
-        self.password_hash = bcrypt_sha256.hash(password)
+        self.password_hash = argon2.hash(password)
 
-    def check_password(self, password:str) -> bool:
-        return bcrypt_sha256.verify(password, self.password_hash)
-
+    # Check password using Argon2
+    def check_password(self, password: str) -> bool:
+        return argon2.verify(password, self.password_hash)
