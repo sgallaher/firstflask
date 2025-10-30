@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang = "en">
+    <head>
+        <title>Create Account</title>
+    </head>
+    <body>
+        <h1>Create an Account</h1>
+        {% if error %}
+            <p style="color:red;">{{ error }}</p>
+        {% endif %}
+        <form action = "/register" method = "POST">
+            <label for="email">Email:</label>
+            <input type="email" id="email" name="email" required autocomplete="off">
+            <br>
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required autocomplete="off">
+            <br>
+            <label for="password_confirm">Confirm Password:</label>
+            <input type="password" id="password_confirm" name="password_confirm" required autocomplete="off">
+            <br>
+            <button type="submit">Register</button>
+
+        </form>
+        <p>Already Registered?  <a href="{{ url_for('index') }}">Sign in</a></p>
+    </body>
+</html>

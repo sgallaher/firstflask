@@ -6,3 +6,5 @@ Flask-Migrate==4.0.7
 alembic==1.14.0
 python-dotenv==1.0.1
 gunicorn
+passlib[bcrypt]==1.7.4
+bcrypt>=3.2.2
