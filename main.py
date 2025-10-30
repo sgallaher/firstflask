@@ -62,7 +62,7 @@ def register():
         password_confirm = request.form.get('password_confirm')
         if password!=password_confirm:
             error = "Passwords do not match."
-            return render_template("register.html", eror=error)
+            return render_template("register.html", error=error)
 
         if db_session.query(User).filter_by(email=email).first():
             error = "Email already registered."
