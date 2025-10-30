@@ -6,4 +6,4 @@ alembic==1.14.0
 python-dotenv==1.0.1
 gunicorn>=20.1,<21
 passlib[argon2]==1.7.4
-argon2-cffi==23.2.0
+argon2-cffi==23.1.0
