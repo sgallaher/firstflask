@@ -1,7 +1,9 @@
-from sqlalchemy import Column, Integer, String, Enum
+from sqlalchemy import Column, Integer, String, Enum, ForeignKey, Float, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 import enum
+from datetime import datetime
 from passlib.hash import argon2  # modern, safe, no 72-byte limit
+from sqlalchemy.orm import relationship
 
 Base = declarative_base()
 
@@ -26,3 +28,15 @@ class User(Base):
     # Check password using Argon2
     def check_password(self, password: str) -> bool:
         return argon2.verify(password, self.password_hash)
+
+
+# Review model
+class Review(Base):
+    __tablename__ = "reviews"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    movie_id = Column(Integer, nullable=False)  # TMDb movie ID
+    rating = Column(Float, nullable=False)      # rating out of 10
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", backref="reviews")

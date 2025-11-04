@@ -1,10 +1,10 @@
-from flask import Flask,request, render_template, session, redirect, url_for
+from flask import Flask,request, render_template, session, redirect, url_for, jsonify
 from db import SessionLocal, engine
-from models import Base, User
+from models import Base, User, Review
 from dotenv import load_dotenv
 import os
 import requests
-
+from datetime import datetime
 load_dotenv()
 
 app = Flask(__name__)
@@ -202,7 +202,33 @@ def search():
                            page=1, total_pages=1, search_params={})
 
 
+@app.route("/review", methods=["POST"])
+def review():
+    if not session.get("user_email"):
+        return jsonify({"error": "Unauthorized"}), 401
 
+    user_email = session["user_email"]
+    db_session = SessionLocal()
+    user = db_session.query(User).filter_by(email=user_email).first()
+
+    movie_id = request.form.get("movie_id")
+    rating = request.form.get("rating")
+
+    if not movie_id or not rating:
+        return jsonify({"error": "Missing data"}), 400
+
+    # Check if review exists
+    existing = db_session.query(Review).filter_by(user_id=user.id, movie_id=movie_id).first()
+    if existing:
+        existing.rating = float(rating)
+        existing.timestamp = datetime.utcnow()
+    else:
+        new_review = Review(user_id=user.id, movie_id=int(movie_id), rating=float(rating))
+        db_session.add(new_review)
+
+    db_session.commit()
+    db_session.close()
+    return jsonify({"success": True})
 
 if __name__ == "__main__":
     app.run(debug=True)

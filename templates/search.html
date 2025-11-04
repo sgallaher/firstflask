@@ -6,9 +6,10 @@
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         input, select { margin-bottom: 10px; padding: 5px; width: 200px; }
-        .movie { border-bottom: 1px solid #ccc; margin-bottom: 10px; padding-bottom: 10px; }
+        .movie { border-bottom: 1px solid #ccc; margin-bottom: 15px; padding-bottom: 10px; }
         img { margin-top: 5px; }
         .pagination a { margin: 0 5px; text-decoration: none; }
+        button { margin-left: 5px; }
     </style>
 </head>
 <body>
@@ -42,35 +43,68 @@
         <p style="color:red">{{ error }}</p>
     {% endif %}
 
+    {% if results %}
+        <p><strong>Total results:</strong> {{ total_results }} | Showing page {{ page }} of {{ total_pages }}</p>
+    {% endif %}
+
     <h2>Results:</h2>
     {% for movie in results %}
         <div class="movie">
             <strong>{{ movie.title }}</strong> ({{ movie.release_date }})<br>
-            Rating: {{ movie.vote_average }}<br>
+            TMDb Rating: {{ movie.vote_average }}<br>
             Overview: {{ movie.overview }}<br>
             {% if movie.poster_path %}
                 <img src="https://image.tmdb.org/t/p/w200{{ movie.poster_path }}" alt="{{ movie.title }}">
             {% endif %}
-{% if movie.main_cast %}
-    <br><strong>Main Cast:</strong>
-    {% for actor in movie.main_cast %}
-        <a href="{{ url_for('search', actor_name=actor, search=1) }}">{{ actor }}</a>{% if not loop.last %}, {% endif %}
-    {% endfor %}
-{% endif %}
+            {% if movie.main_cast %}
+                <br><strong>Main Cast:</strong>
+                {% for actor in movie.main_cast %}
+                    <a href="{{ url_for('search', actor_name=actor, search=1) }}">{{ actor }}</a>{% if not loop.last %}, {% endif %}
+                {% endfor %}
+            {% endif %}
 
+            {% if session.get('user_email') %}
+                <br>
+                <label for="rating_{{ movie.id }}">I've seen it! Rate:</label>
+                <select id="rating_{{ movie.id }}" name="rating">
+                    {% for i in range(1, 11) %}
+                        <option value="{{ i }}">{{ i }}</option>
+                    {% endfor %}
+                </select>
+                <button onclick="submitRating({{ movie.id }})">Submit</button>
+            {% endif %}
         </div>
     {% endfor %}
 
     {% if total_pages > 1 %}
         <div class="pagination">
             {% if page > 1 %}
-                <a href="{{ url_for('search', page=page-1, **search_params) }}">Previous</a>
+                <a href="{{ url_for('search', page=page-1, **search_params) }}">Previous 20</a>
             {% endif %}
             Page {{ page }} of {{ total_pages }}
             {% if page < total_pages %}
-                <a href="{{ url_for('search', page=page+1, **search_params) }}">Next</a>
+                <a href="{{ url_for('search', page=page+1, **search_params) }}">Next 20</a>
             {% endif %}
         </div>
     {% endif %}
+
+    <script>
+        function submitRating(movieId) {
+            const rating = document.getElementById(`rating_${movieId}`).value;
+            fetch("/review", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: `movie_id=${movieId}&rating=${rating}`
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    alert("Rating saved!");
+                } else {
+                    alert("Error: " + data.error);
+                }
+            });
+        }
+    </script>
 </body>
 </html>
