@@ -20,7 +20,7 @@ class User(Base):
     email = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
     access_level = Column(Enum(AccessLevel), default=AccessLevel.GENERAL)
-
+    sessions = relationship("UserSession", back_populates="user")
     # Set password using Argon2
     def set_password(self, password: str):
         self.password_hash = argon2.hash(password)
@@ -40,3 +40,13 @@ class Review(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", backref="reviews")
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    login_time = Column(DateTime, default=datetime.utcnow)
+    logout_time = Column(DateTime)
+
+    user = relationship("User", back_populates="sessions")
+

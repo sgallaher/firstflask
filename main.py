@@ -1,10 +1,10 @@
-from flask import Flask,request, render_template, session, redirect, url_for, jsonify
+from flask import Flask, request, render_template, session, redirect, url_for, jsonify
 from db import SessionLocal, engine
-from models import Base, User, Review
+from models import Base, User, Review, UserSession
 from dotenv import load_dotenv
 import os
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import func
 
 load_dotenv()
@@ -12,27 +12,26 @@ load_dotenv()
 app = Flask(__name__)
 
 app.secret_key = os.getenv("SECRET_KEY")  # Fetch secret key from .env
+app.permanent_session_lifetime = timedelta(hours=1)  # session expires after 1 hour
 
-# Create tables in the database if the don't exist yet
+# Create tables in the database if they don't exist yet
 Base.metadata.create_all(bind=engine)
 
-from sqlalchemy import func
 
-from flask import Flask, render_template, request, session, redirect, url_for
-from sqlalchemy.orm import Session
-from sqlalchemy import func
-from db import SessionLocal
-from models import User, Review
-import os
-import requests
-from datetime import datetime
+@app.before_request
+def check_session_expiry():
+    """Clear session if expired."""
+    if 'start_time' in session:
+        start_time = datetime.fromisoformat(session['start_time'])
+        if datetime.utcnow() - start_time > timedelta(hours=1):
+            session.clear()
+
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     db_session = SessionLocal()
     error = None
 
-    # Initialize attempt counter if missing
     if 'attempts' not in session:
         session['attempts'] = 0
 
@@ -40,11 +39,19 @@ def index():
     if request.method == "POST":
         email = request.form.get("email")
         password = request.form.get("password")
-
         user = db_session.query(User).filter_by(email=email).first()
         if user and user.check_password(password):
             session['user_email'] = user.email
             session['attempts'] = 0
+            session.permanent = True
+            session['start_time'] = datetime.utcnow().isoformat()
+
+            # Record login
+            user_session = UserSession(user_id=user.id)
+            db_session.add(user_session)
+            db_session.commit()
+            session['user_session_id'] = user_session.id
+
             db_session.close()
             return redirect(url_for("index"))
         else:
@@ -52,7 +59,6 @@ def index():
             remaining = 3 - session['attempts']
             error = f"Invalid credentials. {remaining} attempt(s) remain."
 
-    # If user is logged in, prepare reviews
     user_reviews = []
     if session.get("user_email"):
         user = db_session.query(User).filter_by(email=session['user_email']).first()
@@ -64,7 +70,7 @@ def index():
                     .scalar()
                 avg_rating = round(avg_rating, 2) if avg_rating else None
 
-                # Fetch full movie details from TMDB
+                # Fetch full movie details
                 movie_details = {}
                 try:
                     response = requests.get(
@@ -81,7 +87,6 @@ def index():
                             "runtime": data.get("runtime"),
                             "release_date": data.get("release_date")
                         }
-                    
                 except Exception as e:
                     print(f"TMDB fetch error: {e}")
 
@@ -93,12 +98,10 @@ def index():
                     )
                     if credits_resp.status_code == 200:
                         credits_data = credits_resp.json()
-                        # Take the first 10 cast members
                         cast_list = [c['name'] for c in credits_data.get('cast', [])[:10]]
                 except Exception as e:
                     print(f"TMDB credits fetch error: {e}")
 
-                # Append review with movie details
                 user_reviews.append({
                     "movie_id": review.movie_id,
                     "rating": review.rating,
@@ -114,6 +117,21 @@ def index():
     return render_template("index.html", error=error, user_reviews=user_reviews)
 
 
+@app.route("/logout", methods=["POST"])
+def logout():
+    db_session = SessionLocal()
+    user_session_id = session.get("user_session_id")
+
+    if user_session_id:
+        user_session = db_session.query(UserSession).filter_by(id=user_session_id).first()
+        if user_session:
+            user_session.logout_time = datetime.utcnow()
+            db_session.commit()
+
+    db_session.close()
+    session.clear()
+    return redirect(url_for("index"))
+
 
 @app.route("/register", methods=["GET","POST"])
 def register():
@@ -124,7 +142,7 @@ def register():
         email = request.form.get('email')
         password = request.form.get('password')
         password_confirm = request.form.get('password_confirm')
-        if password!=password_confirm:
+        if password != password_confirm:
             error = "Passwords do not match."
             return render_template("register.html", error=error)
 
@@ -137,8 +155,10 @@ def register():
             db_session.commit()
             db_session.close()
             return redirect(url_for('index'))
+
     db_session.close()
     return render_template("register.html", error=error)
+
 
 @app.route("/search", methods=["GET", "POST"])
 def search():
