@@ -28,26 +28,78 @@
         <p>Not registered? <a href="{{ url_for('register') }}">Create an account</a></p>
     {% else %}
         <h1>Welcome back, {{ session['user_email'] }}</h1>
+<p>Begin a new <a href="{{ url_for('search') }}">search</a></p>
+<h2>Your Reviewed Movies</h2>
 
-        <h2>Your Reviewed Movies</h2>
-        {% if user_reviews %}
-            {% for review in user_reviews %}
-                <div class="movie">
-                    {% if review.title %}
-                        <strong>{{ review.title }}</strong><br>
-                    {% else %}
-                        Movie ID: {{ review.movie_id }}<br>
-                    {% endif %}
-                    {% if review.poster_path %}
-                        <img src="https://image.tmdb.org/t/p/w200{{ review.poster_path }}" alt="{{ review.title }}">
-                    {% endif %}
-                    Rating: {{ review.rating }}<br>
-                    Reviewed on: {{ review.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
-                </div>
-            {% endfor %}
-        {% else %}
-            <p>You haven't reviewed any movies yet.</p>
-        {% endif %}
+{% if user_reviews %}
+    {% for review in user_reviews %}
+        <div class="movie">
+            {% if review.title %}
+                <strong>{{ review.title }}</strong><br>
+            {% else %}
+                Movie ID: {{ review.movie_id }}<br>
+            {% endif %}
+
+            {% if review.poster_path %}
+                <img src="https://image.tmdb.org/t/p/w200{{ review.poster_path }}" alt="{{ review.title }}">
+            {% endif %}
+
+            <p>
+                <strong>Your rating:</strong> {{ review.rating }}/10<br>
+                {% if review.avg_rating %}
+                    <strong>Average rating (all users):</strong> {{ review.avg_rating }}/10
+                {% else %}
+                    <em>No other reviews yet</em>
+                {% endif %}
+            </p>
+
+            <p><em>Reviewed on:</em> {{ review.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+
+            <!-- Details toggle button -->
+            <button class="details-btn" onclick="toggleDetails('details-{{ loop.index }}')">
+                Details
+            </button>
+
+            <!-- Collapsible details section -->
+            <div id="details-{{ loop.index }}" class="collapsible" style="display:none; margin-top:10px; padding:10px; border:1px solid #ccc;">
+                {% if review.movie_details %}
+                    <p><strong>Overview:</strong> {{ review.movie_details.overview }}</p>
+                    <p><strong>Genres:</strong>
+                        {% for genre in review.movie_details.genres %}
+                            {{ genre.name }}{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    </p>
+                    <p><strong>Runtime:</strong> {{ review.movie_details.runtime }} minutes</p>
+                    <p><strong>Release Date:</strong> {{ review.movie_details.release_date }}</p>
+                    {% if review.main_cast %}
+    <p><strong>Main Cast:</strong>
+        {% for actor in review.main_cast %}
+            <a href="{{ url_for('search', actor_name=actor, search=1) }}">{{ actor }}</a>{% if not loop.last %}, {% endif %}
+        {% endfor %}
+    </p>
+{% endif %}
+                {% else %}
+                    <p>Full details unavailable.</p>
+                {% endif %}
+            </div>
+        </div>
+    {% endfor %}
+{% else %}
+    <p>You haven't reviewed any movies yet.</p>
+{% endif %}
+
+<script>
+function toggleDetails(id) {
+    const el = document.getElementById(id);
+    if (el.style.display === "none") {
+        el.style.display = "block";
+    } else {
+        el.style.display = "none";
+    }
+}
+</script>
+
+
 
         <form action="/logout" method="POST">
             <button type="submit">Logout</button>

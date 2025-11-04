@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 import os
 import requests
 from datetime import datetime
+from sqlalchemy import func
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -14,42 +16,103 @@ app.secret_key = os.getenv("SECRET_KEY")  # Fetch secret key from .env
 # Create tables in the database if the don't exist yet
 Base.metadata.create_all(bind=engine)
 
+from sqlalchemy import func
+
+from flask import Flask, render_template, request, session, redirect, url_for
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from db import SessionLocal
+from models import User, Review
+import os
+import requests
+from datetime import datetime
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     db_session = SessionLocal()
     error = None
-    # add code
-    # initialize attempt counter if missing
-    if 'attempts' not in session:
-        session['attempts']= 0
-    
-    # if already logged in
-    if session.get('user_email'):
-        return render_template("index.html")
-    
-    # if user has exceeded 3 attempts
-    if session['attempts']>=3:
-        error = "Too many failed attempts.  Please try again later"
-        db_session.close()
-        return render_template('index.html', error=error)
 
+    # Initialize attempt counter if missing
+    if 'attempts' not in session:
+        session['attempts'] = 0
+
+    # Handle login POST
     if request.method == "POST":
         email = request.form.get("email")
         password = request.form.get("password")
 
-        # query db to see if user exists
         user = db_session.query(User).filter_by(email=email).first()
         if user and user.check_password(password):
             session['user_email'] = user.email
-            session['attempts']=0
+            session['attempts'] = 0
             db_session.close()
             return redirect(url_for("index"))
         else:
             session['attempts'] += 1
             remaining = 3 - session['attempts']
             error = f"Invalid credentials. {remaining} attempt(s) remain."
+
+    # If user is logged in, prepare reviews
+    user_reviews = []
+    if session.get("user_email"):
+        user = db_session.query(User).filter_by(email=session['user_email']).first()
+        if user:
+            for review in user.reviews:
+                # Average rating for the movie
+                avg_rating = db_session.query(func.avg(Review.rating))\
+                    .filter(Review.movie_id == review.movie_id)\
+                    .scalar()
+                avg_rating = round(avg_rating, 2) if avg_rating else None
+
+                # Fetch full movie details from TMDB
+                movie_details = {}
+                try:
+                    response = requests.get(
+                        f"https://api.themoviedb.org/3/movie/{review.movie_id}",
+                        params={"api_key": os.getenv("TMDB_API_KEY"), "language": "en-US"}
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        movie_details = {
+                            "title": data.get("title"),
+                            "poster_path": data.get("poster_path"),
+                            "overview": data.get("overview"),
+                            "genres": data.get("genres", []),
+                            "runtime": data.get("runtime"),
+                            "release_date": data.get("release_date")
+                        }
+                    
+                except Exception as e:
+                    print(f"TMDB fetch error: {e}")
+
+                cast_list = []
+                try:
+                    credits_resp = requests.get(
+                        f"https://api.themoviedb.org/3/movie/{review.movie_id}/credits",
+                        params={"api_key": os.getenv("TMDB_API_KEY")}
+                    )
+                    if credits_resp.status_code == 200:
+                        credits_data = credits_resp.json()
+                        # Take the first 10 cast members
+                        cast_list = [c['name'] for c in credits_data.get('cast', [])[:10]]
+                except Exception as e:
+                    print(f"TMDB credits fetch error: {e}")
+
+                # Append review with movie details
+                user_reviews.append({
+                    "movie_id": review.movie_id,
+                    "rating": review.rating,
+                    "avg_rating": avg_rating,
+                    "timestamp": review.timestamp,
+                    "title": movie_details.get("title"),
+                    "poster_path": movie_details.get("poster_path"),
+                    "movie_details": movie_details,
+                    "main_cast": cast_list
+                })
+
     db_session.close()
-    return render_template("index.html", error=error)
+    return render_template("index.html", error=error, user_reviews=user_reviews)
+
 
 
 @app.route("/register", methods=["GET","POST"])
