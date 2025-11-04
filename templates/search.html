@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Movie Search</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        input, select { margin-bottom: 10px; padding: 5px; width: 200px; }
+        .movie { border-bottom: 1px solid #ccc; margin-bottom: 10px; padding-bottom: 10px; }
+        img { margin-top: 5px; }
+        .pagination a { margin: 0 5px; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <h1>Search Movies</h1>
+
+    <form method="POST">
+        <label>Movie Title:</label><br>
+        <input type="text" name="query" value="{{ search_params.get('query','') }}"><br>
+
+        <label>Actor Name:</label><br>
+        <input type="text" name="actor_name" value="{{ search_params.get('actor_name','') }}"><br>
+
+        <label>Genre:</label><br>
+        <select name="genre">
+            <option value="">All</option>
+            {% for genre in genres %}
+                <option value="{{ genre.id }}" {% if search_params.get('genre') == genre.id|string %}selected{% endif %}>{{ genre.name }}</option>
+            {% endfor %}
+        </select><br>
+
+        <label>Year From:</label><br>
+        <input type="number" name="year_from" min="1900" max="2100" value="{{ search_params.get('year_from','') }}"><br>
+
+        <label>Year To:</label><br>
+        <input type="number" name="year_to" min="1900" max="2100" value="{{ search_params.get('year_to','') }}"><br>
+
+        <button type="submit">Search</button>
+    </form>
+
+    {% if error %}
+        <p style="color:red">{{ error }}</p>
+    {% endif %}
+
+    <h2>Results:</h2>
+    {% for movie in results %}
+        <div class="movie">
+            <strong>{{ movie.title }}</strong> ({{ movie.release_date }})<br>
+            Rating: {{ movie.vote_average }}<br>
+            Overview: {{ movie.overview }}<br>
+            {% if movie.poster_path %}
+                <img src="https://image.tmdb.org/t/p/w200{{ movie.poster_path }}" alt="{{ movie.title }}">
+            {% endif %}
+{% if movie.main_cast %}
+    <br><strong>Main Cast:</strong>
+    {% for actor in movie.main_cast %}
+        <a href="{{ url_for('search', actor_name=actor, search=1) }}">{{ actor }}</a>{% if not loop.last %}, {% endif %}
+    {% endfor %}
+{% endif %}
+
+        </div>
+    {% endfor %}
+
+    {% if total_pages > 1 %}
+        <div class="pagination">
+            {% if page > 1 %}
+                <a href="{{ url_for('search', page=page-1, **search_params) }}">Previous</a>
+            {% endif %}
+            Page {{ page }} of {{ total_pages }}
+            {% if page < total_pages %}
+                <a href="{{ url_for('search', page=page+1, **search_params) }}">Next</a>
+            {% endif %}
+        </div>
+    {% endif %}
+</body>
+</html>
