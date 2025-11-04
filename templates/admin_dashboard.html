@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Dashboard</title>
+    <style>
+        table { border-collapse: collapse; width: 100%; }
+        th, td { padding: 10px; border: 1px solid #ccc; text-align: left; }
+    </style>
+</head>
+<body>
+    <h1>Admin Dashboard</h1>
+    <p>Welcome, {{ session['user_email'] }}</p>
+<form action="{{ url_for('logout') }}" method="POST" style="display:inline;">
+    <button type="submit">Logout</button>
+</form>
+
+    <h2>Registered Users</h2>
+    <table>
+        <tr>
+            <th>Email</th>
+            <th>Total Reviews</th>
+            <th>Average Review</th>
+            <th>Details</th>
+        </tr>
+        {% for user in users %}
+        <tr>
+            <td>{{ user.email }}</td>
+            <td>{{ user.total_reviews }}</td>
+            <td>{{ user.avg_review or 'N/A' }}</td>
+            <td><a href="{{ url_for('admin_user_details', user_id=user.id) }}">View Details</a></td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

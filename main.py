@@ -1,11 +1,13 @@
 from flask import Flask, request, render_template, session, redirect, url_for, jsonify
 from db import SessionLocal, engine
-from models import Base, User, Review, UserSession
+from models import Base, User, Review, UserSession, AccessLevel
 from dotenv import load_dotenv
 import os
 import requests
 from datetime import datetime, timedelta
 from sqlalchemy import func
+
+from functools import wraps
 
 load_dotenv()
 
@@ -26,12 +28,12 @@ def check_session_expiry():
         if datetime.utcnow() - start_time > timedelta(hours=1):
             session.clear()
 
-
 @app.route("/", methods=["GET", "POST"])
 def index():
     db_session = SessionLocal()
     error = None
 
+    # Initialize attempt counter if missing
     if 'attempts' not in session:
         session['attempts'] = 0
 
@@ -39,18 +41,16 @@ def index():
     if request.method == "POST":
         email = request.form.get("email")
         password = request.form.get("password")
+
         user = db_session.query(User).filter_by(email=email).first()
         if user and user.check_password(password):
             session['user_email'] = user.email
             session['attempts'] = 0
-            session.permanent = True
-            session['start_time'] = datetime.utcnow().isoformat()
 
-            # Record login
-            user_session = UserSession(user_id=user.id)
-            db_session.add(user_session)
-            db_session.commit()
-            session['user_session_id'] = user_session.id
+            # Redirect admin users directly to dashboard
+            if user.access_level == AccessLevel.ADMIN:
+                db_session.close()
+                return redirect(url_for("admin_dashboard"))
 
             db_session.close()
             return redirect(url_for("index"))
@@ -59,62 +59,63 @@ def index():
             remaining = 3 - session['attempts']
             error = f"Invalid credentials. {remaining} attempt(s) remain."
 
-    user_reviews = []
+    # If user is logged in
     if session.get("user_email"):
         user = db_session.query(User).filter_by(email=session['user_email']).first()
-        if user:
-            for review in user.reviews:
-                # Average rating for the movie
-                avg_rating = db_session.query(func.avg(Review.rating))\
-                    .filter(Review.movie_id == review.movie_id)\
-                    .scalar()
-                avg_rating = round(avg_rating, 2) if avg_rating else None
+        # Redirect admin directly
+        if user and user.access_level == AccessLevel.ADMIN:
+            db_session.close()
+            return redirect(url_for("admin_dashboard"))
 
-                # Fetch full movie details
-                movie_details = {}
-                try:
-                    response = requests.get(
-                        f"https://api.themoviedb.org/3/movie/{review.movie_id}",
-                        params={"api_key": os.getenv("TMDB_API_KEY"), "language": "en-US"}
-                    )
-                    if response.status_code == 200:
-                        data = response.json()
-                        movie_details = {
-                            "title": data.get("title"),
-                            "poster_path": data.get("poster_path"),
-                            "overview": data.get("overview"),
-                            "genres": data.get("genres", []),
-                            "runtime": data.get("runtime"),
-                            "release_date": data.get("release_date")
-                        }
-                except Exception as e:
-                    print(f"TMDB fetch error: {e}")
+        # Regular user: fetch their reviews (existing logic)
+        user_reviews = []
+        for review in user.reviews:
+            avg_rating = db_session.query(func.avg(Review.rating))\
+                .filter(Review.movie_id == review.movie_id).scalar()
+            avg_rating = round(avg_rating, 2) if avg_rating else None
 
-                cast_list = []
-                try:
-                    credits_resp = requests.get(
-                        f"https://api.themoviedb.org/3/movie/{review.movie_id}/credits",
-                        params={"api_key": os.getenv("TMDB_API_KEY")}
-                    )
-                    if credits_resp.status_code == 200:
-                        credits_data = credits_resp.json()
-                        cast_list = [c['name'] for c in credits_data.get('cast', [])[:10]]
-                except Exception as e:
-                    print(f"TMDB credits fetch error: {e}")
+            movie_details = {}
+            cast_list = []
+            try:
+                r = requests.get(
+                    f"https://api.themoviedb.org/3/movie/{review.movie_id}",
+                    params={"api_key": os.getenv("TMDB_API_KEY"), "language": "en-US"}
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    movie_details = {
+                        "title": data.get("title"),
+                        "poster_path": data.get("poster_path"),
+                        "overview": data.get("overview"),
+                        "genres": data.get("genres", []),
+                        "runtime": data.get("runtime"),
+                        "release_date": data.get("release_date")
+                    }
+                # Fetch cast
+                credits_resp = requests.get(
+                    f"https://api.themoviedb.org/3/movie/{review.movie_id}/credits",
+                    params={"api_key": os.getenv("TMDB_API_KEY")}
+                )
+                if credits_resp.status_code == 200:
+                    cast_list = [c['name'] for c in credits_resp.json().get('cast', [])[:10]]
+            except Exception as e:
+                print(f"TMDB fetch error: {e}")
 
-                user_reviews.append({
-                    "movie_id": review.movie_id,
-                    "rating": review.rating,
-                    "avg_rating": avg_rating,
-                    "timestamp": review.timestamp,
-                    "title": movie_details.get("title"),
-                    "poster_path": movie_details.get("poster_path"),
-                    "movie_details": movie_details,
-                    "main_cast": cast_list
-                })
+            user_reviews.append({
+                "movie_id": review.movie_id,
+                "rating": review.rating,
+                "avg_rating": avg_rating,
+                "timestamp": review.timestamp,
+                "title": movie_details.get("title"),
+                "poster_path": movie_details.get("poster_path"),
+                "movie_details": movie_details,
+                "main_cast": cast_list
+            })
+        db_session.close()
+        return render_template("index.html", error=error, user_reviews=user_reviews)
 
     db_session.close()
-    return render_template("index.html", error=error, user_reviews=user_reviews)
+    return render_template("index.html", error=error)
 
 
 @app.route("/logout", methods=["POST"])
@@ -131,6 +132,112 @@ def logout():
     db_session.close()
     session.clear()
     return redirect(url_for("index"))
+
+
+
+# --- Admin decorator ---
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_email' not in session:
+            return redirect(url_for('index'))
+        db_session = SessionLocal()
+        user = db_session.query(User).filter_by(email=session['user_email']).first()
+        db_session.close()
+        if not user or user.access_level != AccessLevel.ADMIN:
+            return "Access denied: Admins only", 403
+        return f(*args, **kwargs)
+    return decorated_function
+
+# --- Admin dashboard route ---
+@app.route("/admin")
+@admin_required
+def admin_dashboard():
+    db_session = SessionLocal()
+    users = db_session.query(User).all()
+    user_data = []
+
+    for user in users:
+        total_reviews = db_session.query(Review).filter_by(user_id=user.id).count()
+        avg_review = db_session.query(func.avg(Review.rating)).filter_by(user_id=user.id).scalar()
+        avg_review = round(avg_review, 2) if avg_review else None
+
+        user_data.append({
+            "id": user.id,
+            "email": user.email,
+            "total_reviews": total_reviews,
+            "avg_review": avg_review
+        })
+
+    db_session.close()
+    return render_template("admin_dashboard.html", users=user_data)
+
+# --- Admin user details route ---
+@app.route("/admin/user/<int:user_id>")
+@admin_required
+def admin_user_details(user_id):
+    db_session = SessionLocal()
+    user = db_session.query(User).filter_by(id=user_id).first()
+    if not user:
+        db_session.close()
+        return "User not found", 404
+
+    # Fetch all reviews for this user
+    user_reviews = []
+    genre_ratings = {}  # genre -> list of ratings
+
+    for review in user.reviews:
+        movie_details = {}
+        main_genres = []
+
+        # Get movie details from TMDb
+        try:
+            r = requests.get(
+                f"https://api.themoviedb.org/3/movie/{review.movie_id}",
+                params={"api_key": os.getenv("TMDB_API_KEY"), "language": "en-US"}
+            )
+            if r.status_code == 200:
+                data = r.json()
+                movie_details = {
+                    "title": data.get("title"),
+                    "poster_path": data.get("poster_path"),
+                    "release_date": data.get("release_date"),
+                    "overview": data.get("overview"),
+                    "genres": [g['name'] for g in data.get('genres', [])]
+                }
+                main_genres = movie_details['genres']
+        except Exception as e:
+            print(f"TMDB fetch error: {e}")
+
+        # Aggregate genre ratings
+        for genre in main_genres:
+            if genre not in genre_ratings:
+                genre_ratings[genre] = []
+            genre_ratings[genre].append(review.rating)
+
+        user_reviews.append({
+            "movie_id": review.movie_id,
+            "rating": review.rating,
+            "timestamp": review.timestamp,
+            "movie_details": movie_details
+        })
+
+    # Calculate average rating per genre
+    genre_avg = {}
+    for genre, ratings in genre_ratings.items():
+        genre_avg[genre] = round(sum(ratings)/len(ratings), 2)
+
+    # Determine favorite genre (highest average rating)
+    favorite_genre = max(genre_avg, key=genre_avg.get) if genre_avg else None
+
+    db_session.close()
+    return render_template(
+        "admin_user_details.html",
+        user=user,
+        user_reviews=user_reviews,
+        genre_avg=genre_avg,
+        favorite_genre=favorite_genre
+    )
 
 
 @app.route("/register", methods=["GET","POST"])

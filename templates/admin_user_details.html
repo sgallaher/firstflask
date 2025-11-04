@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>User Review Details</title>
+    <style>
+        .movie { border-bottom: 1px solid #ccc; margin-bottom: 15px; padding-bottom: 10px; }
+        img { margin-top: 5px; width: 100px; }
+    </style>
+</head>
+<body>
+    <h1>{{ user.email }}'s Review Details</h1>
+    <p><a href="{{ url_for('admin_dashboard') }}">Back to Dashboard</a></p>
+
+    <h2>Reviewed Movies</h2>
+    {% for review in user_reviews %}
+    <div class="movie">
+        <strong>{{ review.movie_details.title or 'Movie ID ' ~ review.movie_id }}</strong><br>
+        {% if review.movie_details.poster_path %}
+        <img src="https://image.tmdb.org/t/p/w200{{ review.movie_details.poster_path }}" alt="{{ review.movie_details.title }}">
+        {% endif %}
+        Rating: {{ review.rating }}<br>
+        Reviewed on: {{ review.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}<br>
+        Genres: {{ review.movie_details.genres | map(attribute='name') | join(', ') }}
+    </div>
+    {% endfor %}
+
+    <h2>Average Rating per Genre</h2>
+    <ul>
+        {% for genre, avg in genre_avg.items() %}
+        <li>{{ genre }}: {{ avg }}</li>
+        {% endfor %}
+    </ul>
+
+    {% if favorite_genre %}
+    <p><strong>Favorite Genre:</strong> {{ favorite_genre }}</p>
+    {% endif %}
+</body>
+</html>
